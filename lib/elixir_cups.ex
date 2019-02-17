@@ -18,16 +18,32 @@ defmodule ElixirCups do
   end
 
   def init(_conf) do
+    System.cmd("/usr/sbin/cupsctl", [ "--remote-admin", "--remote-any", "--share-printers"])
     {:ok, %{printer: ""}}
   end
 
   def list_printers(), do: GenServer.call(__MODULE__, :list)
   def sel_printer(printer), do: GenServer.cast(__MODULE__, {:printer, printer})
+  def htmltopdf(file), do: GenServer.cast(__MODULE__, {:convert, file})
   def print(file), do: GenServer.cast(__MODULE__, {:print, file})
   def add_printer(name, ip \\ ""), do: GenServer.cast(__MODULE__, {:add, name, ip})
-  
+
   def handle_cast({:printer, printer}, state) do
-    {:noreply, %{state | :printer => printer}}  
+    {:noreply, %{state | :printer => printer}}
+  end
+
+  def handle_cast({:convert, file}, state) do
+    System.cmd("/usr/sbin/cupsfilter", [
+      "-i",
+      "text/html",
+      "-d",
+      state.printer,
+      file,
+      ">",
+      Path.rootname(file) <> ".pdf"
+    ])
+
+    {:noreply, state}
   end
 
   def handle_cast({:print, file}, state) do
@@ -41,10 +57,11 @@ defmodule ElixirCups do
   end
 
   def handle_call(:list, _from, state) do
-    {:reply, System.cmd("lpstat", ["-a"]) 
-    |> elem(0) 
-    |> String.split("\n") 
-    |> List.delete("") 
-    |> Enum.map(fn x -> String.split(x, " ") |> hd() end), state}
+    {:reply,
+     System.cmd("lpstat", ["-a"])
+     |> elem(0)
+     |> String.split("\n")
+     |> List.delete("")
+     |> Enum.map(fn x -> String.split(x, " ") |> hd() end), state}
   end
 end
